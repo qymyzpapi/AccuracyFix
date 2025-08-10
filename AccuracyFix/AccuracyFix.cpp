@@ -2,6 +2,17 @@
 
 CAccuracyFix gAccuracyFix;
 
+float CAccuracyFix::GetSpeed2DLimitSqr()
+{
+    const float val = (this->m_af_speed_limit_all ? this->m_af_speed_limit_all->value : 0.0f);
+    if (val != this->m_speed2d_limit)
+    {
+        this->m_speed2d_limit     = val;
+        this->m_speed2d_limit_sqr = (val > 0.0f) ? (val * val) : 0.0f;
+    }
+    return this->m_speed2d_limit_sqr;
+}
+
 void CAccuracyFix::ServerActivate()
 {	
 	this->m_af_accuracy_all = gAccuracyUtil.CvarRegister("af_accuracy_all", "-1.0");
@@ -9,6 +20,11 @@ void CAccuracyFix::ServerActivate()
 	this->m_af_distance_all = gAccuracyUtil.CvarRegister("af_distance_all", "-1.0");
 
 	this->m_af_jump_fix = gAccuracyUtil.CvarRegister("af_jump_fix", "0.0");
+
+	// новый квар: лимит 2D-скорости (юн/с) для отключения корректировки
+	this->m_af_speed_limit_all = gAccuracyUtil.CvarRegister("af_speed_limit_all", "210.0");
+	this->m_speed2d_limit      = this->m_af_speed_limit_all ? this->m_af_speed_limit_all->value : 0.0f;
+	this->m_speed2d_limit_sqr  = (this->m_speed2d_limit > 0.0f) ? (this->m_speed2d_limit * this->m_speed2d_limit) : 0.0f;
 
 	if (g_ReGameApi)
 	{
@@ -79,6 +95,23 @@ void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMons
 									}
 								}
 
+								// --- SPEED GATE (2D по pev->velocity) ---
+								{
+									const float limitSqr = this->GetSpeed2DLimitSqr();
+									if (limitSqr > 0.0f)
+									{
+										const float vx  = Player->pev->velocity.x;
+										const float vy  = Player->pev->velocity.y;
+										const float sp2 = vx * vx + vy * vy; // без sqrt
+
+										if (sp2 >= limitSqr)
+										{
+											return; // бежит — не корректируем трейс
+										}
+									}
+								}
+								// --- /SPEED GATE ---
+
 								auto DistanceLimit = this->m_af_distance[Player->m_pActiveItem->m_iId]->value;
 
 								if (this->m_af_distance_all->value > 0)
@@ -122,4 +155,3 @@ void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMons
 		}
 	}
 }
-
