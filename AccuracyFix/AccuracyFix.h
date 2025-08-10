@@ -11,14 +11,24 @@
 class CAccuracyFix
 {
 public:
-	void ServerActivate();
-	void TraceLine(const float* vStart, const float* vEnd, int fNoMonsters, edict_t* pentToSkip, TraceResult* ptr);
+    void ServerActivate();
+    void TraceLine(const float* vStart, const float* vEnd, int fNoMonsters, edict_t* pentToSkip, TraceResult* ptr);
 
-	cvar_t* m_af_distance_all;
-	cvar_t* m_af_distance[MAX_WEAPONS + 1];
-	cvar_t* m_af_accuracy_all;
-	cvar_t* m_af_accuracy[MAX_WEAPONS + 1];
-	cvar_t* m_af_jump_fix;
+    cvar_t* m_af_distance_all;
+    cvar_t* m_af_distance[MAX_WEAPONS + 1];
+    cvar_t* m_af_accuracy_all;
+    cvar_t* m_af_accuracy[MAX_WEAPONS + 1];
+    cvar_t* m_af_jump_fix;
+
+    // --- NEW: speed gate ---
+    // 2D лимит скорости (юн/с); 0 — выключено
+    cvar_t* m_af_speed_limit_all;
+    // кэш значения квара (юн/с) и его квадрата
+    float   m_speed2d_limit;
+    float   m_speed2d_limit_sqr;
+
+    // геттер кэша квадрата лимита
+    float GetSpeed2DLimitSqr();
 };
 
 extern CAccuracyFix gAccuracyFix;
