@@ -20,15 +20,20 @@ public:
     cvar_t* m_af_accuracy[MAX_WEAPONS + 1];
     cvar_t* m_af_jump_fix;
 
-    // --- NEW: speed gate ---
+    // --- NEW: Speed Gate (Лимит скорости) ---
     // 2D лимит скорости (юн/с); 0 — выключено
     cvar_t* m_af_speed_limit_all;
-    // кэш значения квара (юн/с) и его квадрата
+    // Кэш значения квара (юн/с) и его квадрата
     float   m_speed2d_limit;
     float   m_speed2d_limit_sqr;
 
-    // геттер кэша квадрата лимита
+    // Геттер кэша квадрата лимита
     float GetSpeed2DLimitSqr();
+
+    // --- NEW: Access Control (Проверка прав) ---
+    // 0 - выключено (работает для всех)
+    // 1 - включено (работает только если в iuser4 установлен специальный бит)
+    cvar_t* m_af_vip_only;
 };
 
 extern CAccuracyFix gAccuracyFix;
