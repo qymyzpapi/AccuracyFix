@@ -19,6 +19,7 @@ public:
 	cvar_t* m_af_accuracy_all;
 	cvar_t* m_af_accuracy[MAX_WEAPONS + 1];
 	cvar_t* m_af_jump_fix;
+    cvar_t* m_af_speed_limit_all;
 };
 
 extern CAccuracyFix gAccuracyFix;
