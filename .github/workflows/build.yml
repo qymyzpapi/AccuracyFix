@@ -10,7 +10,7 @@ on:
 jobs:
   linux:
     name: Linux Build
-    runs-on: runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
     steps:
     - name: Setup Checkout
@@ -37,7 +37,7 @@ jobs:
       with:
         name: linux32
         path: publish/*
-        
+
   windows:
     name: Windows Build
     runs-on: windows-latest
@@ -63,13 +63,8 @@ jobs:
     - name: Move release file to publish
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
-        # Make publish directory
         mkdir publish\addons\accuracyfix\dlls
-
-        # Move released dll to publish
         move ${{env.BUILD_CONFIGURATION}}\*.dll publish\addons\accuracyfix\dlls
-
-        # Move settings file to folder
         mv ${{env.SOLUTION_FILE_PATH}}\cstrike\addons\accuracyfix\accuracyfix.cfg publish\addons\accuracyfix\accuracyfix.cfg
 
     - name: Deploy artifacts
