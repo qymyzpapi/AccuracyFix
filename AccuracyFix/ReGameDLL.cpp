@@ -5,6 +5,17 @@ const ReGameFuncs_t	*g_ReGameFuncs;
 IReGameHookchains	*g_ReGameHookchains;
 CGameRules			*g_pGameRules;
 
+void Hook_FireBullets3(IReGameHook_CBasePlayer_FireBullets3* chain, CBasePlayer* pThis, Vector vecSrc, Vector vecDirShooting, float flSpread, float flDistance, int iPenetration, int iBulletType, int iDamage, float flRangeModifier, entvars_t* pevAttacker, bool bPistol, int shared_rand)
+{
+	g_bIsShooting = true;
+	g_pShootingPlayer = pThis->edict();
+
+	chain->callNext(pThis, vecSrc, vecDirShooting, flSpread, flDistance, iPenetration, iBulletType, iDamage, flRangeModifier, pevAttacker, bPistol, shared_rand);
+
+	g_bIsShooting = false;
+	g_pShootingPlayer = nullptr;
+}
+
 bool ReGameDLL_Init()
 {
 	const char *szGameDLLModule = GET_GAME_INFO(PLID, GINFO_DLL_FULLPATH);
@@ -68,7 +79,6 @@ bool ReGameDLL_Init()
 	}
 
 	g_ReGameFuncs = g_ReGameApi->GetFuncs();
-
 	g_ReGameHookchains = g_ReGameApi->GetHookchains();
 
 	if (!g_ReGameApi->BGetICSEntity(CSENTITY_API_INTERFACE_VERSION))
@@ -76,6 +86,8 @@ bool ReGameDLL_Init()
 		LOG_CONSOLE(PLID, "[%s] Interface CCSEntity API version '%s' not found", Plugin_info.logtag, CSENTITY_API_INTERFACE_VERSION);
 		return false;
 	}
+
+	g_ReGameHookchains->InstallClientHook(HookChain_CBasePlayer_FireBullets3, Hook_FireBullets3);
 
 	return true;
 }
@@ -100,4 +112,3 @@ CGameRules *ReGameDLL_InstallGameRules(IReGameHook_InstallGameRules *chain)
 	
 	return gamerules;
 }
-
