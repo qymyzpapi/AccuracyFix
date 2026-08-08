@@ -1,9 +1,5 @@
 #pragma once
 
-/**
-* global_get(glb_trace_flags) values
-* @note Custom flags that we can retrieve in pfnShouldCollide/TraceLine/TraceHull
-*/
 #define FTRACE_BULLET                   (1<<16)
 #define FTRACE_FLASH                    (1<<17)
 #define FTRACE_KNIFE                    (1<<18)
@@ -19,7 +15,10 @@ public:
 	cvar_t* m_af_accuracy_all;
 	cvar_t* m_af_accuracy[MAX_WEAPONS + 1];
 	cvar_t* m_af_jump_fix;
-    cvar_t* m_af_speed_limit_all;
+	cvar_t* m_af_speed_limit_all;
 };
 
 extern CAccuracyFix gAccuracyFix;
+
+extern bool g_bIsShooting;
+extern edict_t* g_pShootingPlayer;
