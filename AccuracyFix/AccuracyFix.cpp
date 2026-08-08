@@ -2,6 +2,9 @@
 
 CAccuracyFix gAccuracyFix;
 
+bool g_bIsShooting = false;
+edict_t* g_pShootingPlayer = nullptr;
+
 void CAccuracyFix::ServerActivate()
 {	
 	this->m_af_accuracy_all = gAccuracyUtil.CvarRegister("af_accuracy_all", "-1.0");
@@ -17,21 +20,15 @@ void CAccuracyFix::ServerActivate()
 		{
 			auto SlotInfo = g_ReGameApi->GetWeaponSlot((WeaponIdType)WeaponID);
 
-			if (SlotInfo)
+			if (SlotInfo && ((SlotInfo->slot == PRIMARY_WEAPON_SLOT) || (SlotInfo->slot == PISTOL_SLOT)))
 			{
-				if ((SlotInfo->slot == PRIMARY_WEAPON_SLOT) || (SlotInfo->slot == PISTOL_SLOT))
+				if (SlotInfo->weaponName && SlotInfo->weaponName[0u] != '\0')
 				{
-					if (SlotInfo->weaponName)
-					{
-						if (SlotInfo->weaponName[0u] != '\0')
-						{
-							Q_snprintf(cvarName, sizeof(cvarName), "af_distance_%s", SlotInfo->weaponName);
-							this->m_af_distance[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "8192.0");
+					Q_snprintf(cvarName, sizeof(cvarName), "af_distance_%s", SlotInfo->weaponName);
+					this->m_af_distance[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "8192.0");
 
-							Q_snprintf(cvarName, sizeof(cvarName), "af_accuracy_%s", SlotInfo->weaponName);
-							this->m_af_accuracy[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "9999.0");
-						}
-					}
+					Q_snprintf(cvarName, sizeof(cvarName), "af_accuracy_%s", SlotInfo->weaponName);
+					this->m_af_accuracy[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "9999.0");
 				}
 			}
 		}
@@ -39,82 +36,71 @@ void CAccuracyFix::ServerActivate()
 
 	auto Path = gAccuracyUtil.GetPath();
 
-	if (Path)
+	if (Path && Path[0u] != '\0')
 	{
-		if (Path[0u] != '\0')
-		{
-			gAccuracyUtil.ServerCommand("exec %s/accuracyfix.cfg", Path);
-		}
+		gAccuracyUtil.ServerCommand("exec %s/accuracyfix.cfg", Path);
 	}
 }
 
 void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMonsters, edict_t* pentToSkip, TraceResult* ptr)
 {
-	if ((fNoMonsters == dont_ignore_monsters) && (gpGlobals->trace_flags != FTRACE_FLASH))
-	{
-		if (!FNullEnt(pentToSkip))
-		{
-			auto EntityIndex = g_engfuncs.pfnIndexOfEdict(pentToSkip);
+	if (!g_bIsShooting || pentToSkip != g_pShootingPlayer)
+		return;
 
-			if (EntityIndex > 0 && EntityIndex <= gpGlobals->maxClients)
-			{
-				auto Player = UTIL_PlayerByIndexSafe(EntityIndex);
+	if (fNoMonsters != dont_ignore_monsters || gpGlobals->trace_flags == FTRACE_FLASH)
+		return;
 
-				if (Player)
-				{
-					if (Player->IsAlive())
-					{
-						if (Player->m_pActiveItem)
-						{
-							if ((Player->m_pActiveItem->iItemSlot() == PRIMARY_WEAPON_SLOT) || (Player->m_pActiveItem->iItemSlot() == PISTOL_SLOT))
-							{
-								float speedLimit = this->m_af_speed_limit_all->value;
-								
-								float speedSq = (Player->pev->velocity.x * Player->pev->velocity.x) + (Player->pev->velocity.y * Player->pev->velocity.y);
-								
-								if (speedLimit <= 0.0f || speedSq <= (speedLimit * speedLimit))
-								{
-									auto DistanceLimit = this->m_af_distance[Player->m_pActiveItem->m_iId]->value;
+	if (FNullEnt(pentToSkip))
+		return;
 
-									if (this->m_af_distance_all->value > 0)
-									{
-										DistanceLimit = this->m_af_distance_all->value;
-									}
+	auto EntityIndex = ENTINDEX(pentToSkip);
+	if (EntityIndex < 1 || EntityIndex > gpGlobals->maxClients)
+		return;
 
-									if (DistanceLimit > 0.0f)
-									{
-										if ((this->m_af_jump_fix->value > 0) || (Player->pev->flags & FL_ONGROUND))
-										{
-											auto trResult = gAccuracyUtil.GetUserAiming(pentToSkip, DistanceLimit);
-		
-											if (!FNullEnt(trResult.pHit))
-											{
-												auto TargetIndex = ENTINDEX(trResult.pHit);
-		
-												if (TargetIndex > 0 && TargetIndex <= gpGlobals->maxClients)
-												{
-													auto fwdVelocity = this->m_af_accuracy[Player->m_pActiveItem->m_iId]->value;
-		
-													if (this->m_af_accuracy_all->value > 0.0f)
-													{
-														fwdVelocity = this->m_af_accuracy_all->value;
-													}
-		
-													g_engfuncs.pfnMakeVectors(pentToSkip->v.v_angle);
-		
-													auto vEndRes = (Vector)vStart + gpGlobals->v_forward * fwdVelocity;
+	auto Player = UTIL_PlayerByIndexSafe(EntityIndex);
+	if (!Player || !Player->IsAlive() || !Player->m_pActiveItem)
+		return;
 
-													g_engfuncs.pfnTraceLine(vStart, vEndRes, fNoMonsters, pentToSkip, ptr);
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	float speedLimit = this->m_af_speed_limit_all->value;
+	if (speedLimit > 0.0f && Player->pev->velocity.Length2D() > speedLimit)
+		return;
+
+	if (!(Player->pev->flags & FL_ONGROUND) && this->m_af_jump_fix->value <= 0.0f)
+		return;
+
+	auto itemSlot = Player->m_pActiveItem->iItemSlot();
+	if (itemSlot != PRIMARY_WEAPON_SLOT && itemSlot != PISTOL_SLOT)
+		return;
+
+	int weaponId = Player->m_pActiveItem->m_iId;
+
+	float distanceLimit = this->m_af_distance_all->value;
+	if (distanceLimit <= 0.0f)
+		distanceLimit = this->m_af_distance[weaponId]->value;
+
+	if (distanceLimit <= 0.0f)
+		return;
+
+	Vector vecForward;
+	g_engfuncs.pfnAngleVectors(pentToSkip->v.v_angle, vecForward, NULL, NULL);
+
+	auto trResult = gAccuracyUtil.GetUserAiming(pentToSkip, distanceLimit, vecForward);
+
+	if (FNullEnt(trResult.pHit))
+		return;
+
+	auto TargetIndex = ENTINDEX(trResult.pHit);
+	if (TargetIndex < 1 || TargetIndex > gpGlobals->maxClients)
+		return;
+
+	float accuracyLimit = this->m_af_accuracy_all->value;
+	if (accuracyLimit <= 0.0f)
+		accuracyLimit = this->m_af_accuracy[weaponId]->value;
+
+	if (accuracyLimit <= 0.0f)
+		return;
+
+	auto vEndRes = (Vector)vStart + vecForward * accuracyLimit;
+
+	g_engfuncs.pfnTraceLine(vStart, vEndRes, fNoMonsters, pentToSkip, ptr);
 }
