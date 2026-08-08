@@ -11,24 +11,25 @@ jobs:
   linux:
     name: Linux Build
     runs-on: ubuntu-latest
+    container: ubuntu:20.04
 
     steps:
     - name: Setup Checkout
       uses: actions/checkout@v4
 
     - name: Install build dependencies
-      run: sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib build-essential
+      run: apt-get update && apt-get install -y gcc-multilib g++-multilib build-essential
 
     - name: Run build
       working-directory: ./AccuracyFix
       run: make
-      
+
     - name: Make Accuracy Fix path
       run: mkdir -p publish/addons/accuracyfix/dlls
 
     - name: Move released file
       run: mv ./AccuracyFix/Release/accuracyfix_mm.so publish/addons/accuracyfix/dlls
-      
+
     - name: Move settings file to folder
       run: mv ./cstrike/addons/accuracyfix/accuracyfix.cfg publish/addons/accuracyfix/accuracyfix.cfg
 
