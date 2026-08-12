@@ -2,15 +2,15 @@
 
 CAccuracyFix gAccuracyFix;
 
-bool g_bIsShooting = false;
-edict_t* g_pShootingPlayer = nullptr;
-
 void CAccuracyFix::ServerActivate()
 {	
 	this->m_af_accuracy_all = gAccuracyUtil.CvarRegister("af_accuracy_all", "-1.0");
+
 	this->m_af_distance_all = gAccuracyUtil.CvarRegister("af_distance_all", "-1.0");
+
 	this->m_af_jump_fix = gAccuracyUtil.CvarRegister("af_jump_fix", "0.0");
-	this->m_af_speed_limit_all = gAccuracyUtil.CvarRegister("af_speed_limit_all", "-1.0");
+
+	this->m_af_max_speed = gAccuracyUtil.CvarRegister("af_max_speed", "10.0");
 
 	if (g_ReGameApi)
 	{
@@ -20,15 +20,23 @@ void CAccuracyFix::ServerActivate()
 		{
 			auto SlotInfo = g_ReGameApi->GetWeaponSlot((WeaponIdType)WeaponID);
 
-			if (SlotInfo && ((SlotInfo->slot == PRIMARY_WEAPON_SLOT) || (SlotInfo->slot == PISTOL_SLOT)))
+			if (SlotInfo)
 			{
-				if (SlotInfo->weaponName && SlotInfo->weaponName[0u] != '\0')
+				if ((SlotInfo->slot == PRIMARY_WEAPON_SLOT) || (SlotInfo->slot == PISTOL_SLOT))
 				{
-					Q_snprintf(cvarName, sizeof(cvarName), "af_distance_%s", SlotInfo->weaponName);
-					this->m_af_distance[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "8192.0");
+					if (SlotInfo->weaponName)
+					{
+						if (SlotInfo->weaponName[0u] != '\0')
+						{
+							Q_snprintf(cvarName, sizeof(cvarName), "af_distance_%s", SlotInfo->weaponName);
 
-					Q_snprintf(cvarName, sizeof(cvarName), "af_accuracy_%s", SlotInfo->weaponName);
-					this->m_af_accuracy[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "9999.0");
+							this->m_af_distance[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "8192.0");
+
+							Q_snprintf(cvarName, sizeof(cvarName), "af_accuracy_%s", SlotInfo->weaponName);
+
+							this->m_af_accuracy[WeaponID] = gAccuracyUtil.CvarRegister(cvarName, "9999.0");
+						}
+					}
 				}
 			}
 		}
@@ -36,71 +44,139 @@ void CAccuracyFix::ServerActivate()
 
 	auto Path = gAccuracyUtil.GetPath();
 
-	if (Path && Path[0u] != '\0')
+	if (Path)
 	{
-		gAccuracyUtil.ServerCommand("exec %s/accuracyfix.cfg", Path);
+		if (Path[0u] != '\0')
+		{
+			gAccuracyUtil.ServerCommand("exec %s/accuracyfix.cfg", Path);
+		}
 	}
 }
 
 void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMonsters, edict_t* pentToSkip, TraceResult* ptr)
 {
-	if (!g_bIsShooting || pentToSkip != g_pShootingPlayer)
-		return;
+	const auto TraceFlags = gpGlobals->trace_flags;
 
-	if (fNoMonsters != dont_ignore_monsters || gpGlobals->trace_flags == FTRACE_FLASH)
+	// Only process traces explicitly marked by ReGameDLL as bullet traces.
+	// Flash LOS and every unrelated engine trace must keep their original result.
+	if ((fNoMonsters != dont_ignore_monsters) ||
+		!(TraceFlags & FTRACE_BULLET) ||
+		(TraceFlags & FTRACE_FLASH))
+	{
 		return;
+	}
 
 	if (FNullEnt(pentToSkip))
+	{
 		return;
+	}
 
-	auto EntityIndex = ENTINDEX(pentToSkip);
-	if (EntityIndex < 1 || EntityIndex > gpGlobals->maxClients)
+	auto EntityIndex = g_engfuncs.pfnIndexOfEdict(pentToSkip);
+
+	if (EntityIndex <= 0 || EntityIndex > gpGlobals->maxClients)
+	{
 		return;
+	}
 
 	auto Player = UTIL_PlayerByIndexSafe(EntityIndex);
-	if (!Player || !Player->IsAlive() || !Player->m_pActiveItem)
+
+	if (!Player || !Player->IsAlive())
+	{
 		return;
+	}
 
-	float speedLimit = this->m_af_speed_limit_all->value;
-	if (speedLimit > 0.0f && Player->pev->velocity.Length2D() > speedLimit)
+	auto ActiveItem = Player->m_pActiveItem;
+
+	if (!ActiveItem)
+	{
 		return;
+	}
 
-	if (!(Player->pev->flags & FL_ONGROUND) && this->m_af_jump_fix->value <= 0.0f)
+	if ((ActiveItem->iItemSlot() != PRIMARY_WEAPON_SLOT) &&
+		(ActiveItem->iItemSlot() != PISTOL_SLOT))
+	{
 		return;
+	}
 
-	auto itemSlot = Player->m_pActiveItem->iItemSlot();
-	if (itemSlot != PRIMARY_WEAPON_SLOT && itemSlot != PISTOL_SLOT)
+	const auto WeaponID = ActiveItem->m_iId;
+
+	if (WeaponID <= WEAPON_NONE || WeaponID > MAX_WEAPONS)
+	{
 		return;
+	}
 
-	int weaponId = Player->m_pActiveItem->m_iId;
+	auto DistanceCvar = this->m_af_distance[WeaponID];
+	auto AccuracyCvar = this->m_af_accuracy[WeaponID];
 
-	float distanceLimit = this->m_af_distance_all->value;
-	if (distanceLimit <= 0.0f)
-		distanceLimit = this->m_af_distance[weaponId]->value;
-
-	if (distanceLimit <= 0.0f)
+	if (!DistanceCvar || !AccuracyCvar || !this->m_af_distance_all ||
+		!this->m_af_accuracy_all || !this->m_af_jump_fix || !this->m_af_max_speed)
+	{
 		return;
+	}
 
-	Vector vecForward;
-	g_engfuncs.pfnAngleVectors(pentToSkip->v.v_angle, vecForward, NULL, NULL);
+	auto DistanceLimit = DistanceCvar->value;
 
-	auto trResult = gAccuracyUtil.GetUserAiming(pentToSkip, distanceLimit, vecForward);
+	if (this->m_af_distance_all->value > 0.0f)
+	{
+		DistanceLimit = this->m_af_distance_all->value;
+	}
+
+	// A non-positive distance disables AccuracyFix for this weapon.
+	if (DistanceLimit <= 0.0f)
+	{
+		return;
+	}
+
+	if ((this->m_af_jump_fix->value <= 0.0f) && !(Player->pev->flags & FL_ONGROUND))
+	{
+		return;
+	}
+
+	const auto MaxSpeed = this->m_af_max_speed->value;
+
+	// A negative value disables the speed restriction. Squared 2D velocity is
+	// used to avoid a square root in the hot TraceLine path.
+	if (MaxSpeed >= 0.0f)
+	{
+		const auto VelocityX = Player->pev->velocity.x;
+		const auto VelocityY = Player->pev->velocity.y;
+		const auto Speed2DSquared = (VelocityX * VelocityX) + (VelocityY * VelocityY);
+
+		if (Speed2DSquared > (MaxSpeed * MaxSpeed))
+		{
+			return;
+		}
+	}
+
+	auto trResult = gAccuracyUtil.GetUserAiming(pentToSkip, DistanceLimit);
 
 	if (FNullEnt(trResult.pHit))
+	{
 		return;
+	}
 
 	auto TargetIndex = ENTINDEX(trResult.pHit);
-	if (TargetIndex < 1 || TargetIndex > gpGlobals->maxClients)
+
+	if (TargetIndex <= 0 || TargetIndex > gpGlobals->maxClients)
+	{
 		return;
+	}
 
-	float accuracyLimit = this->m_af_accuracy_all->value;
-	if (accuracyLimit <= 0.0f)
-		accuracyLimit = this->m_af_accuracy[weaponId]->value;
+	auto ForwardDistance = AccuracyCvar->value;
 
-	if (accuracyLimit <= 0.0f)
+	if (this->m_af_accuracy_all->value > 0.0f)
+	{
+		ForwardDistance = this->m_af_accuracy_all->value;
+	}
+
+	if (ForwardDistance <= 0.0f)
+	{
 		return;
+	}
 
-	auto vEndRes = (Vector)vStart + vecForward * accuracyLimit;
+	g_engfuncs.pfnMakeVectors(pentToSkip->v.v_angle);
+
+	auto vEndRes = (Vector)vStart + gpGlobals->v_forward * ForwardDistance;
 
 	g_engfuncs.pfnTraceLine(vStart, vEndRes, fNoMonsters, pentToSkip, ptr);
 }
