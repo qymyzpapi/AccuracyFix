@@ -4,7 +4,7 @@ plugin_info_t Plugin_info =
 {
 	META_INTERFACE_VERSION,
 	"Accuracy Fix",
-	"1.1.7",
+	"1.1.7-optimized",
 	__DATE__,
 	"SmileY",
 	"https://pugbr.net",
@@ -52,9 +52,16 @@ C_DLLEXPORT int Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS* pFunctionTable, m
 
 	gpGamedllFuncs = pGamedllFuncs;
 
-	ReAPI_Init();
+	if (!ReAPI_Init())
+	{
+		return 0;
+	}
 
-	ReGameDLL_Init();
+	if (!ReGameDLL_Init())
+	{
+		ReAPI_Stop();
+		return 0;
+	}
 
 	return 1;
 }
