@@ -8,17 +8,37 @@ cvar_t* CAccuracyUtil::CvarRegister(const char* Name, const char* Value)
 
 	if (!Pointer)
 	{
-		static cvar_t CvarData;
-		
-		CvarData = { Name, (char*)(Value), FCVAR_SERVER | FCVAR_SPONLY, 0.0f, NULL };
+		if (this->m_CvarCount >= MAX_REGISTERED_CVARS)
+		{
+			LOG_CONSOLE(PLID, "[%s] Cvar storage limit reached while registering '%s'", Plugin_info.logtag, Name);
+			return nullptr;
+		}
 
-		g_engfuncs.pfnCVarRegister(&CvarData);
+		auto CvarIndex = this->m_CvarCount;
+
+		Q_strncpy(this->m_CvarNames[CvarIndex], Name, MAX_CVAR_NAME_LENGTH - 1);
+		this->m_CvarNames[CvarIndex][MAX_CVAR_NAME_LENGTH - 1] = '\0';
+
+		this->m_CvarData[CvarIndex] =
+		{
+			this->m_CvarNames[CvarIndex],
+			(char*)(Value),
+			FCVAR_SERVER | FCVAR_EXTDLL,
+			0.0f,
+			NULL
+		};
+
+		g_engfuncs.pfnCVarRegister(&this->m_CvarData[CvarIndex]);
 		
 		Pointer = g_engfuncs.pfnCVarGetPointer(Name);
 
-		if(Pointer)
+		if (Pointer)
 		{
-			g_engfuncs.pfnCvar_DirectSet(Pointer, Value);
+			this->m_CvarCount++;
+		}
+		else
+		{
+			LOG_CONSOLE(PLID, "[%s] Failed to register cvar '%s'", Plugin_info.logtag, Name);
 		}
 	}
 
@@ -58,26 +78,40 @@ const char* CAccuracyUtil::GetPath()
 void CAccuracyUtil::ServerCommand(const char* Format, ...)
 {
 	char Command[255] = { 0 };
+
 	va_list	argptr;
 
 	va_start(argptr, Format);
+
 	vsnprintf(Command, sizeof(Command), Format, argptr);
+
 	va_end(argptr);
 
 	Q_strncat(Command, "\n", sizeof(Command) - 1);
+
 	g_engfuncs.pfnServerCommand(Command);
 }
 
-TraceResult CAccuracyUtil::GetUserAiming(edict_t* pEntity, float DistanceLimit, const Vector& vecForward)
+TraceResult CAccuracyUtil::GetUserAiming(edict_t* pEntity, float DistanceLimit)
 {
 	TraceResult Result = { };
 
 	if (!FNullEnt(pEntity))
 	{
-		Vector v_src = pEntity->v.origin + pEntity->v.view_ofs;
-		Vector v_dest = v_src + vecForward * DistanceLimit;
-		
-		g_engfuncs.pfnTraceLine(v_src, v_dest, 0, pEntity, &Result);
+		auto EntityIndex = g_engfuncs.pfnIndexOfEdict(pEntity);
+
+		if (EntityIndex > 0 && EntityIndex <= gpGlobals->maxClients)
+		{
+			Vector v_forward;
+
+			Vector v_src = pEntity->v.origin + pEntity->v.view_ofs;
+
+			g_engfuncs.pfnAngleVectors(pEntity->v.v_angle, v_forward, NULL, NULL);
+
+			Vector v_dest = v_src + v_forward * DistanceLimit;
+			
+			g_engfuncs.pfnTraceLine(v_src, v_dest, 0, pEntity, &Result);
+		}
 	}
 
 	return Result;
