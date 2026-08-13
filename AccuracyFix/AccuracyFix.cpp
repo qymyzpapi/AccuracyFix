@@ -70,6 +70,7 @@ void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMons
 	if (sqDistance < 16000000.0f)
 	{
 		return;
+	}
 
 	if (FNullEnt(pentToSkip))
 	{
