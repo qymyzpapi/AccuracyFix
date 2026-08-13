@@ -57,11 +57,19 @@ void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMons
 {
 	const auto TraceFlags = gpGlobals->trace_flags;
 
-	if ((fNoMonsters != dont_ignore_monsters) ||
-		(TraceFlags & FTRACE_FLASH))
+	if (fNoMonsters != dont_ignore_monsters)
 	{
 		return;
 	}
+
+	const float dx = vEnd[0] - vStart[0];
+	const float dy = vEnd[1] - vStart[1];
+	const float dz = vEnd[2] - vStart[2];
+	const float sqDistance = (dx * dx) + (dy * dy) + (dz * dz);
+
+	if (sqDistance < 16000000.0f)
+	{
+		return;
 
 	if (FNullEnt(pentToSkip))
 	{
