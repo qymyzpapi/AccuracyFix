@@ -57,10 +57,7 @@ void CAccuracyFix::TraceLine(const float* vStart, const float* vEnd, int fNoMons
 {
 	const auto TraceFlags = gpGlobals->trace_flags;
 
-	// Only process traces explicitly marked by ReGameDLL as bullet traces.
-	// Flash LOS and every unrelated engine trace must keep their original result.
 	if ((fNoMonsters != dont_ignore_monsters) ||
-		!(TraceFlags & FTRACE_BULLET) ||
 		(TraceFlags & FTRACE_FLASH))
 	{
 		return;
